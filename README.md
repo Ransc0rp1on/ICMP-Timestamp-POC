@@ -2,7 +2,9 @@
 
 Detect and analyze ICMP timestamp responses to identify systems vulnerable to CVE-1999-0524. Automatically retrieves and converts timestamps into human-readable UTC times using `nping` or `hping3`.
 
-<a href="https://ibb.co/F4vrHsQN"><img src="https://i.ibb.co/hF56YXGh/icmp-POC-1.png" alt="icmp-POC-1" border="0"></a>
+<a href="https://ibb.co/F4vrHsQN">
+  <img src="https://i.ibb.co/hF56YXGh/icmp-POC-1.png" alt="icmp-POC-1" width="900" border="0" height="150">
+</a>
 
 <a href="https://ibb.co/C3xW3qz4"><img src="https://i.ibb.co/ksYMspxz/icmp-POC-2.png" alt="icmp-POC-2" border="0"></a>
 ## Features
