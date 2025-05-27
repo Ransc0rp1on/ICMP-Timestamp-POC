@@ -11,8 +11,3 @@ Detect and analyze ICMP timestamp responses to identify systems vulnerable to CV
 - **Vulnerability Check**: Instant identification of non-vulnerable hosts
 - **Tool Agnostic**: Supports both `nping` and `hping3` for flexibility
 
-## Installation
-```bash
-git clone https://github.com/yourusername/icmp-timestamp-analyzer.git
-cd icmp-timestamp-analyzer
-chmod +x analyze_icmp_timestamps.sh
