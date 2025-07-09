@@ -17,6 +17,13 @@ today_date=""
 target_ip=""
 tool="nping"
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # Function to show usage instructions
 usage() {
   echo "Usage: $0 [-i <IP> [-t nping|hping3]] | -O <Originate> -R <Receive> -T <Transmit>"
@@ -79,28 +86,28 @@ if [ -n "$target_ip" ]; then
   # Validate tool choice
   tool=${tool:-nping}
   if [[ "$tool" != "nping" && "$tool" != "hping3" ]]; then
-    echo "Error: Invalid tool specified. Use nping or hping3."
+    echo -e "${RED}Error: Invalid tool specified. Use nping or hping3.${NC}"
     exit 1
   fi
 
   # Check if tool is installed
   if ! command -v $tool &>/dev/null; then
-    echo "Error: $tool is not installed."
+    echo -e "${RED}Error: $tool is not installed.${NC}"
     exit 1
   fi
 
   # Run appropriate command
   if [ "$tool" == "nping" ]; then
-    output=$(nping --icmp --icmp-type 13 "$target_ip" 2>&1)
+    output=$(sudo nping --icmp --icmp-type 13 "$target_ip" 2>&1)
     retval=$?
   elif [ "$tool" == "hping3" ]; then
-    output=$(hping3 --icmp --icmptype 13 -c 1 "$target_ip" 2>&1)
+    output=$(sudo hping3 --icmp --icmptype 13 -c 1 "$target_ip" 2>&1)
     retval=$?
   fi
 
   # Check command success
   if [ $retval -ne 0 ]; then
-    echo "Error: $tool command failed with exit code $retval"
+    echo -e "${RED}Error: $tool command failed with exit code $retval${NC}"
     echo "Command output:"
     echo "$output"
     exit 1
@@ -108,19 +115,23 @@ if [ -n "$target_ip" ]; then
 
   # Parse output
   if [ "$tool" == "nping" ]; then
-    originate=$(echo "$output" | grep 'Timestamp reply' | sed -n 's/.*Originate=\([0-9]\+\).*/\1/p')
-    receive=$(echo "$output" | grep 'Timestamp reply' | sed -n 's/.*Receive=\([0-9]\+\).*/\1/p')
-    transmit=$(echo "$output" | grep 'Timestamp reply' | sed -n 's/.*Transmit=\([0-9]\+\).*/\1/p')
+    # Get first reply line only
+    reply_line=$(echo "$output" | grep -m1 'Timestamp reply')
+    originate=$(echo "$reply_line" | sed -n 's/.* orig=\([0-9]\+\).*/\1/p')
+    receive=$(echo "$reply_line" | sed -n 's/.* recv=\([0-9]\+\).*/\1/p')
+    transmit=$(echo "$reply_line" | sed -n 's/.* trans=\([0-9]\+\).*/\1/p')
   elif [ "$tool" == "hping3" ]; then
-    originate=$(echo "$output" | grep 'ICMP Timestamp Reply' | sed -n 's/.*Originate=\([0-9]\+\).*/\1/p')
-    receive=$(echo "$output" | grep 'ICMP Timestamp Reply' | sed -n 's/.*Receive=\([0-9]\+\).*/\1/p')
-    transmit=$(echo "$output" | grep 'ICMP Timestamp Reply' | sed -n 's/.*Transmit=\([0-9]\+\).*/\1/p')
+    reply_line=$(echo "$output" | grep -m1 'ICMP Timestamp Reply')
+    originate=$(echo "$reply_line" | sed -n 's/.*Originate=\([0-9]\+\).*/\1/p')
+    receive=$(echo "$reply_line" | sed -n 's/.*Receive=\([0-9]\+\).*/\1/p')
+    transmit=$(echo "$reply_line" | sed -n 's/.*Transmit=\([0-9]\+\).*/\1/p')
   fi
 
   # Validate parsed values
   if ! [[ "$originate" =~ ^[0-9]+$ ]] || ! [[ "$receive" =~ ^[0-9]+$ ]] || ! [[ "$transmit" =~ ^[0-9]+$ ]]; then
-    echo "Error: Failed to parse timestamps from $tool output"
-    echo "Command output:"
+    echo -e "${RED}Error: Failed to parse timestamps from $tool output${NC}"
+    echo "Searched in line: '$reply_line'"
+    echo "Full command output:"
     echo "$output"
     exit 1
   fi
@@ -129,36 +140,34 @@ fi
 # Get current UTC date if not provided
 today_date=${today_date:-$(date -u +"%Y-%m-%d")}
 
-# Clean trailing .0 from timestamps
-originate_value=$(echo "$originate" | sed 's/\.0$//')
-receive_value=$(echo "$receive" | sed 's/\.0$//')
-transmit_value=$(echo "$transmit" | sed 's/\.0$//')
-
-# Check if all timestamps are zero
-if [[ "$originate_value" == "0" && "$receive_value" == "0" && "$transmit_value" == "0" ]]; then
-  BLUE='\033[0;34m'
-  RESET='\033[0m'
-  echo -e "[${BLUE}!${RESET}] Host not Vulnerable"
+# Check if all timestamps are zero (host not vulnerable)
+if [[ "$originate" == "0" && "$receive" == "0" && "$transmit" == "0" ]]; then
+  echo -e "\n[${BLUE}!${NC}] ${BLUE}Host not vulnerable to CVE-1999-0524${NC}"
+  echo -e "The target is not disclosing its system time via ICMP timestamps"
   exit 0
 fi
 
-# Calculate values
-rtt=$((transmit_value - originate_value))
-local_receive_time=$((originate_value + rtt))
-remote_system_time=$(( (receive_value + transmit_value) / 2 ))
+# Calculate remote system time (average of receive and transmit)
+remote_system_time=$(( (receive + transmit) / 2 ))
 remote_time_human=$(timestamp_to_human_readable $remote_system_time)
 remote_datetime_utc="${today_date}T${remote_time_human}Z"
 
 # Output results
+echo -e "\n${YELLOW}=== Timestamp Analysis Results ===${NC}"
 cat <<EOF
 Parsed ICMP Timestamps:
-  Originate: $originate_value
-  Receive:   $receive_value
-  Transmit:  $transmit_value
-  RTT:       ${rtt} ms
+  Originate: $originate
+  Receive:   $receive
+  Transmit:  $transmit
 
 Remote System Time:
   Milliseconds since midnight UTC: $remote_system_time
   Human-readable time:             $remote_time_human
   Full UTC datetime:               $remote_datetime_utc
 EOF
+
+# Vulnerability conclusion
+echo -e "\n${YELLOW}=== Vulnerability Assessment ===${NC}"
+echo -e "[${GREEN}!${NC}] ${GREEN}Host is VULNERABLE to CVE-1999-0524${NC}"
+echo -e "The target is disclosing its system time via ICMP timestamps"
+echo -e "Disclosed remote time: ${GREEN}$remote_datetime_utc${NC}"
